@@ -20,10 +20,13 @@ A Claude Code plugin that checks for updates to your installed plugins, MCP serv
 ## Install
 
 ```bash
-claude plugins add update-checker
-```
+# From the DK marketplace
+claude plugins marketplace add divyekant/dk-marketplace
+claude plugins install update-checker
 
-Or install from a marketplace that includes this plugin.
+# Or install directly from GitHub
+claude plugins install github:divyekant/update-checker
+```
 
 ## Usage
 
