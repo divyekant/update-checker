@@ -1,0 +1,18 @@
+# Apollo (personal config)
+.apollo.yaml
+CLAUDE.md
+
+# Environment
+.env*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Node
+node_modules/

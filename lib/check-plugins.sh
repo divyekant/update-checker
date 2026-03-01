@@ -37,20 +37,37 @@ check_plugins() {
       continue
     fi
 
-    # Fetch latest from marketplace
-    if ! run_timeout "$GIT_TIMEOUT" git -C "$marketplace_dir" fetch origin --quiet 2>/dev/null; then
+    # Determine if plugin is external (own git repo) vs marketplace-native
+    # External plugins have their own .git with a remote different from the marketplace
+    local repo_dir default_branch is_external="false"
+
+    if [ -n "$install_path" ] && [ -d "${install_path}/.git" ]; then
+      local plugin_remote marketplace_remote
+      plugin_remote=$(git -C "$install_path" remote get-url origin 2>/dev/null || echo "")
+      marketplace_remote=$(git -C "$marketplace_dir" remote get-url origin 2>/dev/null || echo "")
+      if [ -n "$plugin_remote" ] && [ "$plugin_remote" != "$marketplace_remote" ]; then
+        is_external="true"
+        repo_dir="$install_path"
+      fi
+    fi
+
+    if [ "$is_external" = "false" ]; then
+      repo_dir="$marketplace_dir"
+    fi
+
+    # Fetch latest from the correct repo
+    if ! run_timeout "$GIT_TIMEOUT" git -C "$repo_dir" fetch origin --quiet 2>/dev/null; then
       results=$(echo "$results" | jq --arg n "$name" --arg v "$installed_version" \
         '. + [{"name": $n, "current_version": $v, "status": "fetch_failed"}]')
       continue
     fi
 
-    # Get the latest SHA for this plugin's directory in the marketplace
-    local default_branch
-    default_branch=$(git -C "$marketplace_dir" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+    # Get default branch and latest SHA from the correct repo
+    default_branch=$(git -C "$repo_dir" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
     default_branch="${default_branch:-main}"
 
     local latest_sha
-    latest_sha=$(git -C "$marketplace_dir" rev-parse "origin/${default_branch}" 2>/dev/null || echo "")
+    latest_sha=$(git -C "$repo_dir" rev-parse "origin/${default_branch}" 2>/dev/null || echo "")
 
     if [ -z "$latest_sha" ] || [ -z "$installed_sha" ]; then
       continue
@@ -61,16 +78,21 @@ check_plugins() {
       continue
     fi
 
-    # Update available — get changelog
-    local changelog
-    changelog=$(git -C "$marketplace_dir" log --oneline -n 5 "${installed_sha}..origin/${default_branch}" -- "plugins/${name}" 2>/dev/null || true)
-    if [ -z "$changelog" ]; then
-      changelog=$(git -C "$marketplace_dir" log --oneline -n 5 "${installed_sha}..origin/${default_branch}" 2>/dev/null || true)
-    fi
+    # Update available — get changelog and latest version from the correct source
+    local changelog latest_version
 
-    # Try to find latest version from plugin.json on remote
-    local latest_version
-    latest_version=$(git -C "$marketplace_dir" show "origin/${default_branch}:plugins/${name}/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // "unknown"' 2>/dev/null || echo "unknown")
+    if [ "$is_external" = "true" ]; then
+      # External: changelog and version from the plugin's own repo
+      changelog=$(git -C "$repo_dir" log --oneline -n 5 "${installed_sha}..origin/${default_branch}" 2>/dev/null || true)
+      latest_version=$(git -C "$repo_dir" show "origin/${default_branch}:.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // "unknown"' 2>/dev/null || echo "unknown")
+    else
+      # Marketplace-native: scope changelog to plugin subdirectory
+      changelog=$(git -C "$repo_dir" log --oneline -n 5 "${installed_sha}..origin/${default_branch}" -- "plugins/${name}" 2>/dev/null || true)
+      if [ -z "$changelog" ]; then
+        changelog=$(git -C "$repo_dir" log --oneline -n 5 "${installed_sha}..origin/${default_branch}" 2>/dev/null || true)
+      fi
+      latest_version=$(git -C "$repo_dir" show "origin/${default_branch}:plugins/${name}/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // "unknown"' 2>/dev/null || echo "unknown")
+    fi
 
     local changelog_escaped
     changelog_escaped=$(escape_json "$changelog")
