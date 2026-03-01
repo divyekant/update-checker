@@ -1,3 +1,76 @@
 #!/usr/bin/env bash
-# placeholder
-echo '{}'
+# SessionStart hook for update-checker plugin
+# Runs daily check for updates, outputs summary into session context
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LIB_DIR="${PLUGIN_ROOT}/lib"
+
+source "${LIB_DIR}/common.sh"
+
+# Check throttle — exit silently if already checked today
+if ! should_check; then
+  cat <<'EOF'
+{}
+EOF
+  exit 0
+fi
+
+# Run all three adapters, capture output
+plugin_results=$(bash "${LIB_DIR}/check-plugins.sh" 2>/dev/null || echo "[]")
+mcp_results=$(bash "${LIB_DIR}/check-mcp.sh" 2>/dev/null || echo "[]")
+hook_results=$(bash "${LIB_DIR}/check-hooks.sh" 2>/dev/null || echo "[]")
+
+# Count updates by type
+plugin_updates=$(echo "$plugin_results" | jq '[.[] | select(.status == "update_available")] | length')
+mcp_updates=$(echo "$mcp_results" | jq '[.[] | select(.status == "update_available")] | length')
+hook_updates=$(echo "$hook_results" | jq '[.[] | select(.status == "update_available")] | length')
+total_updates=$(( plugin_updates + mcp_updates + hook_updates ))
+
+# Count untracked
+untracked=$(echo "$mcp_results $hook_results" | jq -s 'add // [] | [.[] | select(.status == "untracked")] | length')
+
+# Update throttle
+update_throttle
+
+# If no updates, exit silently
+if [ "$total_updates" -eq 0 ]; then
+  cat <<'EOF'
+{}
+EOF
+  exit 0
+fi
+
+# Build summary message
+summary="update-checker:"
+parts=()
+if [ "$plugin_updates" -gt 0 ]; then
+  parts+=("${plugin_updates} plugin update(s)")
+fi
+if [ "$mcp_updates" -gt 0 ]; then
+  parts+=("${mcp_updates} MCP update(s)")
+fi
+if [ "$hook_updates" -gt 0 ]; then
+  parts+=("${hook_updates} hook update(s)")
+fi
+
+# Join parts with commas
+summary="${summary} $(IFS=', '; echo "${parts[*]}") available. Run /check-updates for details."
+
+# Escape for JSON
+summary_escaped=$(escape_json "$summary")
+
+# Output context injection (same format as superpowers hook)
+cat <<EOF
+{
+  "additional_context": "${summary_escaped}",
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "${summary_escaped}"
+  }
+}
+EOF
+
+exit 0
