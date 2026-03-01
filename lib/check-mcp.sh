@@ -57,7 +57,7 @@ check_mcp() {
           if git_fetch_check "$git_root"; then
             # Updates available
             local default_branch
-            default_branch=$(git -C "$git_root" remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+            default_branch=$(git -C "$git_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
             default_branch="${default_branch:-main}"
             latest_sha=$(git -C "$git_root" rev-parse "origin/${default_branch}" 2>/dev/null || echo "")
             changelog=$(git_changelog "$git_root" "$current_sha" "origin/${default_branch}")
@@ -77,7 +77,7 @@ check_mcp() {
       pkg_name="${pkg_name##-*}"
       if [ -n "$pkg_name" ]; then
         local latest_npm_version
-        latest_npm_version=$(timeout "$GIT_TIMEOUT" npm view "$pkg_name" version 2>/dev/null || echo "")
+        latest_npm_version=$(run_timeout "$GIT_TIMEOUT" npm view "$pkg_name" version 2>/dev/null || echo "")
         if [ -n "$latest_npm_version" ]; then
           # For npx, we can't easily determine current version — just report latest
           status="check_manually"

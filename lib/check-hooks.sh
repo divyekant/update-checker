@@ -81,7 +81,7 @@ check_hooks() {
 
       if git_fetch_check "$git_root"; then
         local default_branch latest_sha changelog
-        default_branch=$(git -C "$git_root" remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+        default_branch=$(git -C "$git_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
         default_branch="${default_branch:-main}"
         latest_sha=$(git -C "$git_root" rev-parse "origin/${default_branch}" 2>/dev/null || echo "")
         changelog=$(git_changelog "$git_root" "$current_sha" "origin/${default_branch}")
@@ -130,7 +130,7 @@ check_hooks() {
 
       if git_fetch_check "$git_root"; then
         local default_branch latest_sha changelog
-        default_branch=$(git -C "$git_root" remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+        default_branch=$(git -C "$git_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
         default_branch="${default_branch:-main}"
         latest_sha=$(git -C "$git_root" rev-parse "origin/${default_branch}" 2>/dev/null || echo "")
         changelog=$(git_changelog "$git_root" "$current_sha" "origin/${default_branch}")

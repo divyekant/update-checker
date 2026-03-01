@@ -38,7 +38,7 @@ check_plugins() {
     fi
 
     # Fetch latest from marketplace
-    if ! timeout "$GIT_TIMEOUT" git -C "$marketplace_dir" fetch origin --quiet 2>/dev/null; then
+    if ! run_timeout "$GIT_TIMEOUT" git -C "$marketplace_dir" fetch origin --quiet 2>/dev/null; then
       results=$(echo "$results" | jq --arg n "$name" --arg v "$installed_version" \
         '. + [{"name": $n, "current_version": $v, "status": "fetch_failed"}]')
       continue
@@ -46,7 +46,7 @@ check_plugins() {
 
     # Get the latest SHA for this plugin's directory in the marketplace
     local default_branch
-    default_branch=$(git -C "$marketplace_dir" remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+    default_branch=$(git -C "$marketplace_dir" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
     default_branch="${default_branch:-main}"
 
     local latest_sha
@@ -63,9 +63,9 @@ check_plugins() {
 
     # Update available — get changelog
     local changelog
-    changelog=$(git -C "$marketplace_dir" log --oneline "${installed_sha}..origin/${default_branch}" -- "plugins/${name}" 2>/dev/null | head -5)
+    changelog=$(git -C "$marketplace_dir" log --oneline -n 5 "${installed_sha}..origin/${default_branch}" -- "plugins/${name}" 2>/dev/null || true)
     if [ -z "$changelog" ]; then
-      changelog=$(git -C "$marketplace_dir" log --oneline "${installed_sha}..origin/${default_branch}" 2>/dev/null | head -5)
+      changelog=$(git -C "$marketplace_dir" log --oneline -n 5 "${installed_sha}..origin/${default_branch}" 2>/dev/null || true)
     fi
 
     # Try to find latest version from plugin.json on remote

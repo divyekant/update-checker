@@ -7,7 +7,21 @@ CLAUDE_DIR="${HOME}/.claude"
 PLUGINS_DIR="${CLAUDE_DIR}/plugins"
 THROTTLE_FILE="${PLUGINS_DIR}/cache/update-checker-last-check"
 THROTTLE_HOURS=24
-GIT_TIMEOUT=10
+GIT_TIMEOUT=15
+
+# Portable timeout — macOS lacks GNU timeout
+# Falls back to no-timeout execution (safe: hook is async, manual use is interactive)
+run_timeout() {
+  local secs="$1"
+  shift
+  if command -v timeout &>/dev/null; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout &>/dev/null; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
 
 # Check if throttle period has elapsed. Returns 0 if check should run, 1 if throttled.
 should_check() {
@@ -40,13 +54,13 @@ git_fetch_check() {
   fi
 
   # Fetch with timeout
-  if ! timeout "$GIT_TIMEOUT" git -C "$repo_dir" fetch origin --quiet 2>/dev/null; then
+  if ! run_timeout "$GIT_TIMEOUT" git -C "$repo_dir" fetch origin --quiet 2>/dev/null; then
     return 2
   fi
 
-  # Determine branch to compare
+  # Determine branch to compare (local-only, no network)
   if [ -z "$branch" ]; then
-    branch=$(git -C "$repo_dir" remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+    branch=$(git -C "$repo_dir" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
     branch="${branch:-main}"
   fi
 
@@ -65,7 +79,8 @@ git_changelog() {
   local repo_dir="$1"
   local from_sha="$2"
   local to_sha="${3:-HEAD}"
-  git -C "$repo_dir" log --oneline "${from_sha}..${to_sha}" 2>/dev/null | head -10
+  # Use -n instead of piping to head to avoid SIGPIPE with set -eo pipefail
+  git -C "$repo_dir" log --oneline -n 10 "${from_sha}..${to_sha}" 2>/dev/null || true
 }
 
 # Escape a string for safe JSON embedding
