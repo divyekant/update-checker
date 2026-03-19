@@ -1,7 +1,7 @@
 {
   "name": "update-checker",
   "description": "Checks for updates to installed CC plugins, MCP servers, and hooks. Runs automatically on session start (once/day) and via /check-updates command.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Divyekant"
   },
